@@ -1,0 +1,16 @@
+{
+    "Model" :{
+        "Box":"box.cmo"
+    },
+    "Texture" :{
+        "Box":"Box.png"
+    },
+    "Sound":{
+        "BGM":{
+           
+        },
+        "SE":{
+          
+        }
+    }
+}
