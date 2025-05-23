@@ -1,27 +1,28 @@
-cbuffer MeshInfo : register(b0)
+struct DrawArgs
 {
-    uint indexCount;
-    uint startIndexLocation;
-    uint baseVertexLocation;
-    uint padding;
-}
-
-struct OutPut
-{
-    uint VertexCountPerInstance;
+    uint IndexCountPerInstance;
     uint InstanceCount;
-    uint StartVertexLocation;
+    uint StartIndexLocation;
+    int BaseVertexLocation;
     uint StartInstanceLocation;
 };
 
-// ComputeShader.hlsl
-RWStructuredBuffer<OutPut> IndirectArgs : register(u0);
+cbuffer ComputeConstants : register(b0)
+{
+    uint TotalInstanceCount;
+    uint IndexCountPerInstance;
+    uint2 padding;
+};
+
+RWBuffer<uint> g_DrawArgs : register(u0);
 
 [numthreads(1, 1, 1)]
 void main(uint3 id : SV_DispatchThreadID)
 {
-    IndirectArgs[id.x].VertexCountPerInstance = indexCount;
-    IndirectArgs[id.x].InstanceCount = 1;
-    IndirectArgs[id.x].StartVertexLocation = 0;
-    IndirectArgs[id.x].StartInstanceLocation = 0;
+   // •`‰æˆø”‚ğŒÂ•Ê‚Éİ’è
+    g_DrawArgs[0] = IndexCountPerInstance; // IndexCountPerInstance
+    g_DrawArgs[1] = TotalInstanceCount; // InstanceCount
+    g_DrawArgs[2] = 0; // StartIndexLocation
+    g_DrawArgs[3] = 0; // BaseVertexLocation (intŒ^‚¾‚ªuint‚Æ‚µ‚Äˆµ‚¤)
+    g_DrawArgs[4] = 0; // StartInstanceLocation
 }

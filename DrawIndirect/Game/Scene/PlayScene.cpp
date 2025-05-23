@@ -15,7 +15,20 @@
 using namespace DirectX;
 using namespace DirectX::SimpleMath;
 
-const int MaxCount = 10000;
+
+
+const std::vector<D3D11_INPUT_ELEMENT_DESC> INSTANCE_INPUT_LAYOUT =
+{
+	{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	{ "NORMAL",   0, DXGI_FORMAT_R32G32B32_FLOAT,    0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	{ "TANGENT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	{ "COLOR",    0, DXGI_FORMAT_R8G8B8A8_UNORM,     0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	{ "MATRIX", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D11_INPUT_PER_INSTANCE_DATA, 1 },
+	{ "MATRIX", 1, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 16, D3D11_INPUT_PER_INSTANCE_DATA, 1 },
+	{ "MATRIX", 2, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 32, D3D11_INPUT_PER_INSTANCE_DATA, 1 },
+	{ "MATRIX", 3, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 48, D3D11_INPUT_PER_INSTANCE_DATA, 1 }
+};
 
 //---------------------------------------------------------
 // コンストラクタ
@@ -59,65 +72,92 @@ void PlayScene::Initialize(CommonResources* resources)
 	m_projection = SimpleMath::Matrix::CreatePerspectiveFieldOfView(
 		XMConvertToRadians(45.0f),
 		static_cast<float>(rect.right) / static_cast<float>(rect.bottom),
-		0.1f, 100.0f
+		0.1f, 1000.0f
 	);
 
 
 	m_model = GameResources::GetInstance()->GetModel("Box");
+	m_texture = GameResources::GetInstance()->GetTexture("Box");
 
-	m_meshBuffer = ShaderManager::CreateConstantBuffer<MeshPartInfo>(device);
 
-	//出力データ
+	int SIZE = Count;
+	// グリッドの大きさを計算（正方形に近い形に配置）
+	int gridSize = static_cast<int>(ceil(sqrt(static_cast<float>(SIZE))));
+	// モデル間の距離
+	float spacing = 3.0f; // 適切な距離に調整してください
+	// グリッドの開始位置（中央に配置するためにオフセット）
+	float startX = -((gridSize - 1) * spacing) / 2.0f;
+	float startZ = -((gridSize - 1) * spacing) / 2.0f;
+
+	/*m_models.resize(SIZE);*/
+	for (int i = 0; i < SIZE; i++)
 	{
-		D3D11_BUFFER_DESC BufferDesc;
-		ZeroMemory(&BufferDesc, sizeof(D3D11_BUFFER_DESC));
-		BufferDesc.BindFlags =
-			D3D11_BIND_UNORDERED_ACCESS |
-			D3D11_BIND_SHADER_RESOURCE;
-		BufferDesc.ByteWidth = sizeof(DrawIndirectArgs);
-		BufferDesc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-		BufferDesc.StructureByteStride = sizeof(DrawIndirectArgs);
+		// グリッド内の位置を計算
+		int row = i / gridSize;
+		int col = i % gridSize;
 
-		device->CreateBuffer(&BufferDesc, nullptr, &m_computeBuffer);
+		// XZ平面上の位置を計算
+		float x = startX + col * spacing;
+		float z = startZ + row * spacing;
 
-		D3D11_UNORDERED_ACCESS_VIEW_DESC UAVDesc;
-		ZeroMemory(&UAVDesc, sizeof(D3D11_UNORDERED_ACCESS_VIEW_DESC));
-		UAVDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
-		UAVDesc.Buffer.FirstElement = 0;
-		UAVDesc.Format = DXGI_FORMAT_UNKNOWN;
-		UAVDesc.Buffer.NumElements = 1;
+		// Y軸は0（平面上）
+		float y = 0.0f;
 
-		// 構造化バッファーをもとにアンオーダード アクセス ビューを作成する
-		device->CreateUnorderedAccessView(m_computeBuffer.Get(), &UAVDesc, &m_outputBufResultUAV);
+		m_worlds.push_back(Matrix::CreateTranslation(Vector3(x, y, z)));
 	}
 
-	{
-		// 2. DrawIndirect専用バッファ
-		D3D11_BUFFER_DESC indirectBufferDesc = {};
-		indirectBufferDesc.BindFlags = 0;
-		indirectBufferDesc.ByteWidth = sizeof(DrawIndirectArgs);
-		indirectBufferDesc.MiscFlags = D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS;
-		indirectBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+	m_testSet.vertexShader = ShaderManager::CreateVSShader(device, "DIDVS.cso");
+	m_testSet.pixelShader = ShaderManager::CreatePSShader(device, "DIDPS.cso");
+	m_testSet.inputLayout = ShaderManager::CreateInputLayout(device, INSTANCE_INPUT_LAYOUT, "DIDVS.cso");
+	m_testSet.cBuffer = ShaderManager::CreateConstantBuffer<CBuff>(device);
 
-		device->CreateBuffer(&indirectBufferDesc, nullptr, &m_indirectArgsBuffer);
-	}
-
-	D3D11_BUFFER_DESC BufferDesc;
-	ZeroMemory(&BufferDesc, sizeof(D3D11_BUFFER_DESC));
-	m_computeBuffer->GetDesc(&BufferDesc);
-	BufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-	BufferDesc.Usage = D3D11_USAGE_STAGING;
-	BufferDesc.BindFlags = 0;
-	BufferDesc.MiscFlags = 0;
-	device->CreateBuffer(&BufferDesc, nullptr, &m_copyBuffer);
+	// インスタンスバッファの作成
+	D3D11_BUFFER_DESC instanceBufferDesc = {};
+	instanceBufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+	instanceBufferDesc.ByteWidth = sizeof(WorldBuffer);
+	instanceBufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+	instanceBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	instanceBufferDesc.MiscFlags = 0;
+	instanceBufferDesc.StructureByteStride = 0;
+	device->CreateBuffer(&instanceBufferDesc, nullptr, &m_instancBuffer);
 
 
+	// 間接描画用の引数バッファを作成
+	DrawIndexedInstancedIndirectArgs indirectArgs = {};
+	indirectArgs.IndexCountPerInstance = 56;
+	indirectArgs.InstanceCount = Count;
+	indirectArgs.StartIndexLocation = 0;
+	indirectArgs.BaseVertexLocation = 0;
+	indirectArgs.StartInstanceLocation = 0;
 
-	m_vertexShader = ShaderManager::CreateVSShader(device, "DIDVS.cso");
-	m_pixelShader = ShaderManager::CreatePSShader(device, "DIDPS.cso");
+	D3D11_BUFFER_DESC indirectArgsDesc = {};
+	indirectArgsDesc.Usage = D3D11_USAGE_DEFAULT;
+	indirectArgsDesc.ByteWidth = sizeof(DrawIndexedInstancedIndirectArgs);
+	indirectArgsDesc.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
+	indirectArgsDesc.CPUAccessFlags = 0;
+	indirectArgsDesc.MiscFlags = D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS;
+	indirectArgsDesc.StructureByteStride = 0;
+	device->CreateBuffer(&indirectArgsDesc, nullptr, &m_indirectArgsBuffer);
+
+
+
 	m_computeShader = ShaderManager::CreateCSShader(device, "DIDCS.cso");
-	m_inputLayout = ShaderManager::CreateInputLayout(device, MODEL_INPUT_LAYOUT, "DIDVS.cso");
-	m_cbuff = ShaderManager::CreateConstantBuffer<CBuff>(device);
+
+	D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+	uavDesc.Format = DXGI_FORMAT_R32_UINT;
+	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+	uavDesc.Buffer.FirstElement = 0;
+	uavDesc.Buffer.NumElements = 5; // DrawIndexedInstancedIndirectArgsの要素数
+	uavDesc.Buffer.Flags = 0;
+	device->CreateUnorderedAccessView(m_indirectArgsBuffer.Get(), &uavDesc, &m_indirectArgsUAV);
+
+	D3D11_BUFFER_DESC computeCBDesc = {};
+	computeCBDesc.Usage = D3D11_USAGE_DYNAMIC;
+	computeCBDesc.ByteWidth = sizeof(ComputeConstants);
+	computeCBDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	computeCBDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	computeCBDesc.MiscFlags = 0;
+	device->CreateBuffer(&computeCBDesc, nullptr, &m_computeConstantBuffer);
 }
 
 //---------------------------------------------------------
@@ -146,64 +186,157 @@ void PlayScene::Render()
 	using namespace DirectX;
 	using namespace DirectX::SimpleMath;
 
+	D3D11_MAPPED_SUBRESOURCE mappedResource;
+	// 定数バッファをマップする
+	context->Map(m_instancBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+	WorldBuffer* cb = static_cast<WorldBuffer*>(mappedResource.pData);
+	for (int i = 0; i < Count; i++) {
+		cb->mat[i] = m_worlds[i].Transpose();
+	}
+	context->Unmap(m_instancBuffer.Get(), 0);
 
-	
+	//for (auto& meshes : m_model->meshes)
+	//{
+	//	for (auto& mesh : meshes->meshParts)
+	//	{
+	//		ID3D11Buffer* pBuf[2] = { mesh->vertexBuffer.Get(), m_instancBuffer.Get() };
 
+	//		UINT strides[2] = { mesh->vertexStride, sizeof(Matrix) };
+	//		UINT offsets[2] = { 0, 0 };
+
+	//		context->IASetVertexBuffers(0, 2, pBuf, strides, offsets);
+	//		//インデックスバッファのセット
+	//		context->IASetIndexBuffer(mesh->indexBuffer.Get(), DXGI_FORMAT_R16_UINT, 0);
+	//		//描画方法（3角形）
+	//		context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	//		//シェーダの設定
+	//		context->VSSetShader(m_testSet.vertexShader.Get(), nullptr, 0);
+	//		context->PSSetShader(m_testSet.pixelShader.Get(), nullptr, 0);
+	//		//インプットレイアウトの設定
+	//		context->IASetInputLayout(m_testSet.inputLayout.Get());
+
+	//		//ブレンドステート
+	//		//透明処理しない
+	//		context->OMSetBlendState(states->Opaque(), nullptr, 0xffffffff);
+	//		//デプスステンシルステート
+	//		context->OMSetDepthStencilState(states->DepthDefault(), 0);
+	//		//テクスチャとサンプラーの設定
+	//		ID3D11ShaderResourceView* pNull[1] = { 0 };
+	//		context->PSSetShaderResources(0, 1, m_texture.GetAddressOf());
+	//		ID3D11SamplerState* pSampler = states->LinearWrap();;
+	//		context->PSSetSamplers(0, 1, &pSampler);
+	//		//ラスタライザステート（表面描画）
+	//		context->RSSetState(states->CullNone());
+
+	//		//コンスタントバッファの準備
+	//		CBuff sb;
+	//		sb.World = Matrix::Identity;
+	//		sb.View = view.Transpose();
+	//		sb.Projection = m_projection.Transpose();
+	//		//ライティング
+	//		Vector4 LightDir(0.5f, -1.0f, 0.5f, 0.0f);
+	//		LightDir.Normalize();
+	//		sb.LightDir = LightDir;
+	//		//ディフューズ
+	//		sb.Diffuse = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+	//		//エミッシブ加算。
+	//		sb.Emissive = Vector4(0.4f, 0.4f, 0.4f, 0);
+	//		//コンスタントバッファの更新
+	//		context->UpdateSubresource(m_testSet.cBuffer.Get(), 0, nullptr, &sb, 0, 0);
+	//		//コンスタントバッファの設定
+	//		ID3D11Buffer* pConstantBuffer = m_testSet.cBuffer.Get();
+	//		//頂点シェーダに渡す
+	//		context->VSSetConstantBuffers(0, 1, &pConstantBuffer);
+	//		//ピクセルシェーダに渡す
+	//		context->PSSetConstantBuffers(0, 1, &pConstantBuffer);
+	//		//描画
+	//		context->DrawIndexedInstancedIndirect(m_indirectArgsBuffer.Get(), 0);
+	//	}
+	//}
 
 	for (auto& meshes : m_model->meshes)
 	{
 		for (auto& mesh : meshes->meshParts)
 		{
+			// Compute Shaderで描画引数を設定
+			{
+				// Compute Shader用の定数バッファを更新
+				D3D11_MAPPED_SUBRESOURCE mapped;
+				context->Map(m_computeConstantBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+				ComputeConstants* constants = static_cast<ComputeConstants*>(mapped.pData);
+				constants->TotalInstanceCount = Count;
+				constants->IndexCountPerInstance = mesh->indexCount;
+				context->Unmap(m_computeConstantBuffer.Get(), 0);
 
-			// コンピュートシェーダーでパラメータを設定
-			MeshPartInfo meshinfo;
-			meshinfo.indexCount = mesh->indexCount;
-			meshinfo.startIndexLocation = 0;
-			meshinfo.baseVertexLocation = 0;
-			context->UpdateSubresource(m_meshBuffer.Get(), 0, nullptr, &meshinfo, 0, 0);
-			ID3D11Buffer* pconstantBuffer = m_meshBuffer.Get();
+				// Compute Shaderの設定
+				context->CSSetShader(m_computeShader.Get(), nullptr, 0);
+				context->CSSetConstantBuffers(0, 1, m_computeConstantBuffer.GetAddressOf());
+				context->CSSetUnorderedAccessViews(0, 1, m_indirectArgsUAV.GetAddressOf(), nullptr);
 
-			context->CSSetUnorderedAccessViews(0, 1, &m_outputBufResultUAV, nullptr);
-			context->CSSetShader(m_computeShader.Get(), nullptr, 0);
-			context->CSSetConstantBuffers(0, 1, &pconstantBuffer);
-			context->Dispatch(1, 1, 1);
+				// Compute Shaderの実行（1スレッドグループで十分）
+				context->Dispatch(1, 1, 1);
 
-			// UAVのアンバインド
-			ID3D11UnorderedAccessView* nullUAV = nullptr;
-			context->CSSetUnorderedAccessViews(0, 1, &nullUAV, nullptr);
-			context->CopyResource(m_indirectArgsBuffer.Get(), m_computeBuffer.Get());
+				// UAVのアンバインド
+				ID3D11UnorderedAccessView* nullUAV = nullptr;
+				context->CSSetUnorderedAccessViews(0, 1, &nullUAV, nullptr);
+			}
 
 
 
+			ID3D11Buffer* pBuf[2] = { mesh->vertexBuffer.Get(), m_instancBuffer.Get() };
 
+			UINT strides[2] = { mesh->vertexStride, sizeof(Matrix) };
+			UINT offsets[2] = { 0, 0 };
 
-
-			UINT stride = sizeof(DirectX::VertexPositionNormalTangentColorTexture); // VertexTypeは実際の頂点構造体に合わせる
-			UINT offset = 0;
-			context->IASetVertexBuffers(0, 1, mesh->vertexBuffer.GetAddressOf(), &stride, &offset);
-			////インデックスバッファのセット
+			context->IASetVertexBuffers(0, 2, pBuf, strides, offsets);
+			//インデックスバッファのセット
 			context->IASetIndexBuffer(mesh->indexBuffer.Get(), DXGI_FORMAT_R16_UINT, 0);
-			//描画方法（3角形）D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
+			//描画方法（3角形）
 			context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-			context->IASetInputLayout(m_inputLayout.Get());
-			context->VSSetShader(m_vertexShader.Get(), nullptr, 0);
-			context->PSSetShader(m_pixelShader.Get(), nullptr, 0);
+			//シェーダの設定
+			context->VSSetShader(m_testSet.vertexShader.Get(), nullptr, 0);
+			context->PSSetShader(m_testSet.pixelShader.Get(), nullptr, 0);
+			//インプットレイアウトの設定
+			context->IASetInputLayout(m_testSet.inputLayout.Get());
 
-			CBuff cb;
-			DirectX::SimpleMath::Matrix world = Matrix::Identity * view * m_projection;
-			cb.mat = world.Transpose();
+			//ブレンドステート
+			//透明処理しない
+			context->OMSetBlendState(states->Opaque(), nullptr, 0xffffffff);
+			//デプスステンシルステート
+			context->OMSetDepthStencilState(states->DepthDefault(), 0);
+			//テクスチャとサンプラーの設定
+			ID3D11ShaderResourceView* pNull[1] = { 0 };
+			context->PSSetShaderResources(0, 1, m_texture.GetAddressOf());
+			ID3D11SamplerState* pSampler = states->LinearWrap();;
+			context->PSSetSamplers(0, 1, &pSampler);
+			//ラスタライザステート（表面描画）
+			context->RSSetState(states->CullNone());
 
+			//コンスタントバッファの準備
+			CBuff sb;
+			sb.World = Matrix::Identity;
+			sb.View = view.Transpose();
+			sb.Projection = m_projection.Transpose();
+			//ライティング
+			Vector4 LightDir(0.5f, -1.0f, 0.5f, 0.0f);
+			LightDir.Normalize();
+			sb.LightDir = LightDir;
+			//ディフューズ
+			sb.Diffuse = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+			//エミッシブ加算。
+			sb.Emissive = Vector4(0.4f, 0.4f, 0.4f, 0);
 			//コンスタントバッファの更新
-			context->UpdateSubresource(m_cbuff.Get(), 0, nullptr, &cb, 0, 0);
+			context->UpdateSubresource(m_testSet.cBuffer.Get(), 0, nullptr, &sb, 0, 0);
 			//コンスタントバッファの設定
-			ID3D11Buffer* pConstantBuffer = m_cbuff.Get();
+			ID3D11Buffer* pConstantBuffer = m_testSet.cBuffer.Get();
 			//頂点シェーダに渡す
 			context->VSSetConstantBuffers(0, 1, &pConstantBuffer);
 			//ピクセルシェーダに渡す
 			context->PSSetConstantBuffers(0, 1, &pConstantBuffer);
-
-			context->DrawInstancedIndirect(m_indirectArgsBuffer.Get(), 0);
+			//描画
+			context->DrawIndexedInstancedIndirect(m_indirectArgsBuffer.Get(), 0);
 		}
 	}
 

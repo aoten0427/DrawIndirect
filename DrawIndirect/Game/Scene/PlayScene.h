@@ -9,28 +9,45 @@
 class CommonResources;
 class DebugCamera;
 
+const int Count = 1000000;
 
 class PlayScene final :
     public IScene
 {
 private:
-	struct MeshPartInfo {
-		UINT indexCount;
-		UINT startIndexLocation;
-		UINT baseVertexLocation;
-		UINT padding;  // 16バイトアライメント用
+	struct CBuff
+	{
+		DirectX::SimpleMath::Matrix World;
+		DirectX::SimpleMath::Matrix View;
+		DirectX::SimpleMath::Matrix Projection;
+		DirectX::SimpleMath::Vector4 LightDir;
+		DirectX::SimpleMath::Vector4 Emissive;
+		DirectX::SimpleMath::Vector4 Diffuse;
 	};
 
-	struct DrawIndirectArgs {
-		UINT VertexCountPerInstance;
+	struct WorldBuffer
+	{
+		DirectX::SimpleMath::Matrix mat[Count];
+	};
+
+	
+
+	// DrawIndexedInstancedIndirect の引数構造体
+	struct DrawIndexedInstancedIndirectArgs
+	{
+		UINT IndexCountPerInstance;
 		UINT InstanceCount;
-		UINT StartVertexLocation;
+		UINT StartIndexLocation;
+		INT BaseVertexLocation;
 		UINT StartInstanceLocation;
 	};
 
-	struct CBuff
+	// Compute Shader用の定数バッファ
+	struct ComputeConstants
 	{
-		DirectX::SimpleMath::Matrix mat;
+		UINT TotalInstanceCount;
+		UINT IndexCountPerInstance;
+		UINT padding[2]; // 16バイトアライメント
 	};
 private:
 	// 共通リソース
@@ -41,24 +58,20 @@ private:
 	DirectX::SimpleMath::Matrix m_projection;
 	
 	DirectX::Model* m_model;
+	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_texture;
 
-	Microsoft::WRL::ComPtr<ID3D11Buffer> m_cbuff;
+	std::vector<DirectX::SimpleMath::Matrix> m_worlds;
 
-	Microsoft::WRL::ComPtr<ID3D11Buffer> m_meshBuffer;
-	Microsoft::WRL::ComPtr<ID3D11Buffer> m_computeBuffer;
+	ShaderSet m_testSet;
+	Microsoft::WRL::ComPtr<ID3D11Buffer> m_instancBuffer;
+
+	// 間接描画用の引数バッファ
 	Microsoft::WRL::ComPtr<ID3D11Buffer> m_indirectArgsBuffer;
-	Microsoft::WRL::ComPtr<ID3D11Buffer> m_copyBuffer;
 
 
-	Microsoft::WRL::ComPtr<ID3D11VertexShader> m_vertexShader;
-	Microsoft::WRL::ComPtr<ID3D11PixelShader> m_pixelShader;
 	Microsoft::WRL::ComPtr<ID3D11ComputeShader> m_computeShader;
-	Microsoft::WRL::ComPtr<ID3D11InputLayout> m_inputLayout;
-
-	ID3D11ShaderResourceView* m_inputBufSRV;
-	ID3D11UnorderedAccessView* m_outputBufResultUAV;
-
-	DrawIndirectArgs data;
+	Microsoft::WRL::ComPtr<ID3D11Buffer> m_computeConstantBuffer;
+	Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> m_indirectArgsUAV;
 public:
 	PlayScene();
 	~PlayScene() override;
