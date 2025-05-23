@@ -134,6 +134,24 @@ public:
 		return pixelShader;
 	}
 
+	static Microsoft::WRL::ComPtr<ID3D11ComputeShader> CreateCSShader(ID3D11Device* device, std::string fileName)
+	{
+		fileName = "Resources/Shaders/" + fileName;
+		std::wstring myWideString = std::wstring(fileName.begin(), fileName.end());
+		const wchar_t* folder = myWideString.c_str();
+
+		std::vector<uint8_t> cs = DX::ReadData(folder);
+
+		Microsoft::WRL::ComPtr<ID3D11ComputeShader> computeShader;
+		//	頂点シェーダ作成
+		if (FAILED(device->CreateComputeShader(cs.data(), cs.size(), NULL, computeShader.ReleaseAndGetAddressOf())))
+		{//	エラー
+			MessageBox(0, L"CreateComputeShader Failed.", NULL, MB_OK);
+		}
+
+		return computeShader;
+	}
+
 	/// <summary>
 	/// 定数バッファ作成
 	/// </summary>
@@ -141,14 +159,18 @@ public:
 	/// <param name="device"></param>
 	/// <returns></returns>
 	template<typename T>
-	static	Microsoft::WRL::ComPtr<ID3D11Buffer> CreateConstantBuffer(ID3D11Device* device) {
+	static	Microsoft::WRL::ComPtr<ID3D11Buffer> CreateConstantBuffer(ID3D11Device* device,
+		D3D11_USAGE usage = D3D11_USAGE_DEFAULT,
+		D3D11_BIND_FLAG bindflag = D3D11_BIND_CONSTANT_BUFFER
+	) {
 		Microsoft::WRL::ComPtr<ID3D11Buffer> constantBuffer;
+
 
 		D3D11_BUFFER_DESC bd;
 		ZeroMemory(&bd, sizeof(bd));
-		bd.Usage = D3D11_USAGE_DEFAULT;
+		bd.Usage = usage;
 		bd.ByteWidth = sizeof(T);
-		bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+		bd.BindFlags = bindflag;
 		bd.CPUAccessFlags = 0;
 		device->CreateBuffer(&bd, nullptr, &constantBuffer);
 

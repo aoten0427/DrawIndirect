@@ -14,15 +14,23 @@ class PlayScene final :
     public IScene
 {
 private:
-	
-	// ドローコール情報を格納するための構造体
-	struct DrawCallArguments
-	{
-		UINT IndexCountPerInstance;
+	struct MeshPartInfo {
+		UINT indexCount;
+		UINT startIndexLocation;
+		UINT baseVertexLocation;
+		UINT padding;  // 16バイトアライメント用
+	};
+
+	struct DrawIndirectArgs {
+		UINT VertexCountPerInstance;
 		UINT InstanceCount;
-		UINT StartIndexLocation;
-		INT BaseVertexLocation;
+		UINT StartVertexLocation;
 		UINT StartInstanceLocation;
+	};
+
+	struct CBuff
+	{
+		DirectX::SimpleMath::Matrix mat;
 	};
 private:
 	// 共通リソース
@@ -33,7 +41,24 @@ private:
 	DirectX::SimpleMath::Matrix m_projection;
 	
 	DirectX::Model* m_model;
-	
+
+	Microsoft::WRL::ComPtr<ID3D11Buffer> m_cbuff;
+
+	Microsoft::WRL::ComPtr<ID3D11Buffer> m_meshBuffer;
+	Microsoft::WRL::ComPtr<ID3D11Buffer> m_computeBuffer;
+	Microsoft::WRL::ComPtr<ID3D11Buffer> m_indirectArgsBuffer;
+	Microsoft::WRL::ComPtr<ID3D11Buffer> m_copyBuffer;
+
+
+	Microsoft::WRL::ComPtr<ID3D11VertexShader> m_vertexShader;
+	Microsoft::WRL::ComPtr<ID3D11PixelShader> m_pixelShader;
+	Microsoft::WRL::ComPtr<ID3D11ComputeShader> m_computeShader;
+	Microsoft::WRL::ComPtr<ID3D11InputLayout> m_inputLayout;
+
+	ID3D11ShaderResourceView* m_inputBufSRV;
+	ID3D11UnorderedAccessView* m_outputBufResultUAV;
+
+	DrawIndirectArgs data;
 public:
 	PlayScene();
 	~PlayScene() override;

@@ -70,6 +70,8 @@ void Model3D::Render(ID3D11DeviceContext* context, DirectX::DX11::CommonStates* 
 				//ラスタライザステート（表面描画）
 				context->RSSetState(states->CullNone());
 
+				
+
 				CBuff cb;
 				DirectX::SimpleMath::Matrix world = m_matrix * view * projection;
 				cb.mat = world.Transpose();

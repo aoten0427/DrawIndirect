@@ -44,6 +44,9 @@
     <Filter Include="Game\Shader">
       <UniqueIdentifier>{78424a4f-595e-489f-ae96-08243f8a0b6d}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Game\DrawInstancedIndirect">
+      <UniqueIdentifier>{94cee617-6075-43cf-9aaf-d1d4e5effa2e}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -165,6 +168,9 @@
     <None Include="Game\Shader\Model.hlsli">
       <Filter>Game\Shader</Filter>
     </None>
+    <None Include="Game\DrawInstancedIndirect\DID.hlsli">
+      <Filter>Game\DrawInstancedIndirect</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Game\Shader\ModelPS.hlsl">
@@ -172,6 +178,15 @@
     </FxCompile>
     <FxCompile Include="Game\Shader\ModelVS.hlsl">
       <Filter>Game\Shader</Filter>
+    </FxCompile>
+    <FxCompile Include="Game\DrawInstancedIndirect\DIDVS.hlsl">
+      <Filter>Game\DrawInstancedIndirect</Filter>
+    </FxCompile>
+    <FxCompile Include="Game\DrawInstancedIndirect\DIDPS.hlsl">
+      <Filter>Game\DrawInstancedIndirect</Filter>
+    </FxCompile>
+    <FxCompile Include="Game\DrawInstancedIndirect\DIDCS.hlsl">
+      <Filter>Game\DrawInstancedIndirect</Filter>
     </FxCompile>
   </ItemGroup>
 </Project>
