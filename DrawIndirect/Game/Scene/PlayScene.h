@@ -42,13 +42,23 @@ private:
 		UINT StartInstanceLocation;
 	};
 
-	// Compute Shader用の定数バッファ
 	struct ComputeConstants
 	{
+		DirectX::SimpleMath::Vector4 FrustumCorners[8]; // フラスタムの8頂点
+		DirectX::SimpleMath::Vector4 FrustumPlanes[6]; // フラスタムの6平面 (xyz:法線, w:距離)
 		UINT TotalInstanceCount;
 		UINT IndexCountPerInstance;
-		UINT padding[2]; // 16バイトアライメント
+		UINT padding[2];
 	};
+
+	// インスタンスデータ（GPU用）
+	struct InstanceData
+	{
+		DirectX::SimpleMath::Matrix World;
+		DirectX::SimpleMath::Vector4 Extents;
+	};
+
+
 private:
 	// 共通リソース
 	CommonResources* m_commonResources;
@@ -63,15 +73,27 @@ private:
 	std::vector<DirectX::SimpleMath::Matrix> m_worlds;
 
 	ShaderSet m_testSet;
-	Microsoft::WRL::ComPtr<ID3D11Buffer> m_instancBuffer;
-
+	
 	// 間接描画用の引数バッファ
 	Microsoft::WRL::ComPtr<ID3D11Buffer> m_indirectArgsBuffer;
+	Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> m_indirectArgsUAV;
 
+	// フラスタムカリング用
+	Microsoft::WRL::ComPtr<ID3D11Buffer> m_allInstanceBuffer;        // 全インスタンス
+	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_allInstanceSRV;
+	Microsoft::WRL::ComPtr<ID3D11Buffer> m_visibleInstanceBuffer;    // 可視インスタンス
+	Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> m_visibleInstanceUAV;
 
 	Microsoft::WRL::ComPtr<ID3D11ComputeShader> m_computeShader;
 	Microsoft::WRL::ComPtr<ID3D11Buffer> m_computeConstantBuffer;
-	Microsoft::WRL::ComPtr<ID3D11UnorderedAccessView> m_indirectArgsUAV;
+	
+	DirectX::BoundingFrustum m_frustum;
+
+
+	std::unique_ptr<DirectX::PrimitiveBatch<DirectX::VertexPositionColor>> m_primitiveBatch;
+	std::unique_ptr<DirectX::BasicEffect> m_basicEffect;
+	Microsoft::WRL::ComPtr<ID3D11InputLayout> m_inputLayout;
+	float m_rotate = 0;
 public:
 	PlayScene();
 	~PlayScene() override;
@@ -82,4 +104,7 @@ public:
 	void Finalize() override;
 
 	SceneID GetNextSceneID() const;
+
+	void MakeFrustumData(DirectX::SimpleMath::Matrix view, DirectX::SimpleMath::Matrix projection,ComputeConstants& data);
+	DirectX::SimpleMath::Vector4 CalculatePlane(const DirectX::SimpleMath::Vector3& a, const DirectX::SimpleMath::Vector3& b, const DirectX::SimpleMath::Vector3& c);
 };
